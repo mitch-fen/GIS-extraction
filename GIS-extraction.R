@@ -6,14 +6,16 @@
 
 ### 0. Setup ####
 
-install.packages(c("raster","osmdata","sf","bcmaps"))
+#install.packages(c("raster","osmdata","sf","bcmaps","spex"))
 
 library(raster)
 library(osmdata)
 library(sf)
+library(spex)
 library(dplyr)
 library(ggplot2)
 library(bcmaps)
+library(rgeos)
 
 getwd()
 setwd("D:/Mitch/Cathedral/3.Data/3.2 GIS")
@@ -41,6 +43,8 @@ utm_bbox
 extent_CATH = extent(utm_bbox[1], utm_bbox[2], utm_bbox[3], utm_bbox[4])
 
 ### 2. Extract OSM data ####
+# Currently only extracting trails
+## FUTURE ADD ROADS? 
 
 osm_bbox = c(long_range[1],lat_range[1], long_range[2],lat_range[2])
 
@@ -68,6 +72,76 @@ ggplot(CATH_trails, aes(color = osm_id)) +
 st_write(CATH_trails, paste0(getwd(),"/","CATH_trails.shp"))
 
 ### 3. Extract elevation for points ####
-# Currently using 25m 1:250000 BC Gov DEM
+# Currently using 25m 1:250000 BC Gov CDED DEM 
+# (https://www2.gov.bc.ca/gov/content/data/geographic-data-services/topographic-data/elevation/digital-elevation-model)
 
-CATH_raster<- cded_raster
+# Download DEM for AOI
+extent_CATH_sf <- spex(extent_CATH, crs = CATH_crs)
+CATH_raster<- cded_raster(aoi = extent_CATH_sf)
+
+# Load camera location data
+CATH_points <- read.csv("Cathedral_Camera_Deployments_August2020.csv")
+colnames(CATH_points)[1] <- "Site"
+
+# Convert site locations to spatial points
+CATH_points_sp <- SpatialPoints(cbind.data.frame(CATH_points$Long, CATH_points$Lat))
+
+# Extract value from raster at each point
+CATH_points_el_sp <- extract(CATH_raster, CATH_points_sp, sp = T)
+
+CATH_points_elev <- as.data.frame(CATH_points_el_sp)
+colnames(CATH_points_elev) <- c("Elevation", "Long", "Lat")
+
+# Add elevation data to master DF
+CATH_points_master <- full_join(CATH_points,CATH_points_elev)
+
+### 4. Extract distance to water ####
+# Using NRCAN CANVEC (https://maps.canada.ca/czs/index-en.html)
+
+CATH_watercourse <- shapefile("D:/Mitch/Cathedral/3.Data/3.2 GIS/CANVEC_Water/watercourse_1.shp")
+CATH_waterbody <- shapefile("D:/Mitch/Cathedral/3.Data/3.2 GIS/CANVEC_Water/waterbody_2.shp")
+CATH_waterbody_line <- as(CATH_waterbody, "SpatialLinesDataFrame")
+
+# Join waterbodies and watercourses (lakes and rivers/streams)
+CATH_water_combi <- raster::union(CATH_watercourse, CATH_waterbody_line)
+CATH_water_combi
+
+# Re-project to UTM
+CATH_water_combi_proj <- spTransform(CATH_water_combi, CATH_crs)
+CATH_water_combi_proj
+
+# Fix up points to match
+proj4string(CATH_points_sp) <- CRS("+init=epsg:4326 +proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0")
+CATH_points_sp_proj <- spTransform(CATH_points_sp, CATH_crs)
+CATH_points_sp_proj
+
+# Extract distance to water
+CATH_dist_h2o <- cbind.data.frame(CATH_points$Site, CATH_points$Long, CATH_points$Lat)
+colnames(CATH_dist_h2o) <- c("Site", "Long", "Lat")
+
+for (i in 1:nrow(CATH_points)){
+  tmp <- gDistance(CATH_points_sp_proj[i], CATH_water_combi_proj)
+  CATH_dist_h2o$d.H2O[i] <- tmp
+}
+
+CATH_points_master <- left_join(CATH_points_master, CATH_dist_h2o)
+
+### 5. Extract distance to trails ####
+# FUTURE ADD ROADS???
+
+CATH_trail_shp <- shapefile("D:/Mitch/Cathedral/3.Data/3.2 GIS/CATH_trails.shp")
+plot(CATH_trail_shp)
+
+CATH_dist_trails <- cbind.data.frame(CATH_points$Site, CATH_points$Long, CATH_points$Lat)
+colnames(CATH_dist_trails) <- c("Site", "Long", "Lat")
+
+for (i in 1:nrow(CATH_points)){
+  tmp <- gDistance(CATH_points_sp_proj[i], CATH_trail_shp)
+  CATH_dist_trails$d.TRL[i] <- tmp
+}
+
+CATH_points_master <- left_join(CATH_points_master, CATH_dist_trails)
+
+### ?. Save and export master ####
+write.csv(CATH_points_master, "CATH_master_sites.csv", row.names = F)
+
