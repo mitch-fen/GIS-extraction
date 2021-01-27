@@ -16,6 +16,7 @@ library(dplyr)
 library(ggplot2)
 library(bcmaps)
 library(rgeos)
+library(spatialEco)
 
 getwd()
 setwd("D:/Mitch/Cathedral/3.Data/3.2 GIS")
@@ -68,8 +69,17 @@ ggplot(CATH_trails, aes(color = osm_id)) +
   geom_sf() +
   theme(legend.position = "none")
 
+CATH_roads = CATH_lines %>%
+  filter(highway %in% c("track","unclassified","service"))
+
+ggplot(CATH_roads, aes(color = osm_id)) + 
+  geom_sf() +
+  theme(legend.position = "none")
+
 # Save as shapefile
 st_write(CATH_trails, paste0(getwd(),"/","CATH_trails.shp"))
+st_write(CATH_roads, paste0(getwd(),"/","CATH_roads.shp"))
+st_write(CATH_lines, paste0(getwd(),"/","CATH_roads_trails.shp"))
 
 ### 3. Extract elevation for points ####
 # Currently using 25m 1:250000 BC Gov CDED DEM 
@@ -126,9 +136,8 @@ for (i in 1:nrow(CATH_points)){
 
 CATH_points_master <- left_join(CATH_points_master, CATH_dist_h2o)
 
-### 5. Extract distance to trails ####
-# FUTURE ADD ROADS???
-
+### 5. Extract distance to trails and roads (and both) ####
+#trails
 CATH_trail_shp <- shapefile("D:/Mitch/Cathedral/3.Data/3.2 GIS/CATH_trails.shp")
 plot(CATH_trail_shp)
 
@@ -142,6 +151,50 @@ for (i in 1:nrow(CATH_points)){
 
 CATH_points_master <- left_join(CATH_points_master, CATH_dist_trails)
 
+# roads
+CATH_road_shp <- shapefile("D:/Mitch/Cathedral/3.Data/3.2 GIS/CATH_roads.shp")
+plot(CATH_road_shp)
+
+CATH_dist_roads <- cbind.data.frame(CATH_points$Site, CATH_points$Long, CATH_points$Lat)
+colnames(CATH_dist_roads) <- c("Site", "Long", "Lat")
+
+for (i in 1:nrow(CATH_points)){
+  tmp <- gDistance(CATH_points_sp_proj[i], CATH_road_shp)
+  CATH_dist_roads$d.ROAD[i] <- tmp
+}
+
+CATH_points_master <- left_join(CATH_points_master, CATH_dist_roads)
+
+#combined road and trails (linear features)
+CATH_road_trail_shp <- shapefile("D:/Mitch/Cathedral/3.Data/3.2 GIS/CATH_roads_trails.shp")
+plot(CATH_road_trail_shp)
+
+CATH_dist_roads_trails <- cbind.data.frame(CATH_points$Site, CATH_points$Long, CATH_points$Lat)
+colnames(CATH_dist_roads_trails) <- c("Site", "Long", "Lat")
+
+for (i in 1:nrow(CATH_points)){
+  tmp <- gDistance(CATH_points_sp_proj[i], CATH_road_trail_shp)
+  CATH_dist_roads_trails$d.LIN[i] <- tmp
+}
+
+CATH_points_master <- left_join(CATH_points_master, CATH_dist_roads_trails)
+
+### 6. Calculate terrain ruggedness ####
+#VRM (Sappington et al 2007)
+
+vrm3 <- vrm(CATH_raster, s=3) #Likely use this one
+vrm5 <- vrm(CATH_raster, s=5)
+
+# Extract value from raster at each point
+CATH_points_vrm_sp <- extract(vrm3, CATH_points_sp, sp = T)
+
+CATH_points_vrm <- as.data.frame(CATH_points_vrm_sp)
+colnames(CATH_points_vrm) <- c("VRM", "Long", "Lat")
+
+# Add elevation data to master DF
+CATH_points_master <- left_join(CATH_points_master,CATH_points_vrm)
+
 ### ?. Save and export master ####
-write.csv(CATH_points_master, "CATH_master_sites.csv", row.names = F)
+
+write.csv(CATH_points_master, "CATH_master_sites_JAN26.csv", row.names = F)
 
