@@ -17,6 +17,7 @@ library(ggplot2)
 library(bcmaps)
 library(rgeos)
 library(spatialEco)
+library(MODISTools)
 
 getwd()
 setwd("D:/Mitch/Cathedral/3.Data/3.2 GIS")
@@ -44,8 +45,6 @@ utm_bbox
 extent_CATH = extent(utm_bbox[1], utm_bbox[2], utm_bbox[3], utm_bbox[4])
 
 ### 2. Extract OSM data ####
-# Currently only extracting trails
-## FUTURE ADD ROADS? 
 
 osm_bbox = c(long_range[1],lat_range[1], long_range[2],lat_range[2])
 
@@ -194,7 +193,8 @@ colnames(CATH_points_vrm) <- c("VRM", "Long", "Lat")
 # Add elevation data to master DF
 CATH_points_master <- left_join(CATH_points_master,CATH_points_vrm)
 
+
 ### ?. Save and export master ####
 
-write.csv(CATH_points_master, "CATH_master_sites_JAN26.csv", row.names = F)
+write.csv(CATH_points_master, "CATH_master_sites_Feb16.csv", row.names = F)
 
