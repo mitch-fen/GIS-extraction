@@ -104,6 +104,29 @@ colnames(CATH_points_elev) <- c("Elevation", "Long", "Lat")
 # Add elevation data to master DF
 CATH_points_master <- full_join(CATH_points,CATH_points_elev)
 
+## Add aspect and slope using DEM ##
+
+# Turn off scientific notation because it's annoying
+options(scipen = 999)
+
+aspect <- terrain(CATH_raster, "aspect", "degrees", 8)
+CATH_points_aspct <- extract(aspect, CATH_points_sp, sp = T)
+CATH_points_aspct <- as.data.frame(CATH_points_aspct)
+colnames(CATH_points_aspct) <- c("Aspect", "Long", "Lat")
+
+# Add aspect to master DF
+CATH_points_master <- left_join(CATH_points_master, CATH_points_aspct)
+
+slope <- terrain(CATH_raster, "slope", "degrees", 8)
+CATH_points_slope <- extract(slope, CATH_points_sp, sp = T)
+CATH_points_slope <- as.data.frame(CATH_points_slope)
+colnames(CATH_points_slope) <- c("Slope", "Long", "Lat")
+
+# Add slope to master DF
+CATH_points_master <- left_join(CATH_points_master, CATH_points_slope)
+
+
+
 ### 4. Extract distance to water ####
 # Using NRCAN CANVEC (https://maps.canada.ca/czs/index-en.html)
 
@@ -190,11 +213,11 @@ CATH_points_vrm_sp <- extract(vrm3, CATH_points_sp, sp = T)
 CATH_points_vrm <- as.data.frame(CATH_points_vrm_sp)
 colnames(CATH_points_vrm) <- c("VRM", "Long", "Lat")
 
-# Add elevation data to master DF
+# Add VRM data to master DF
 CATH_points_master <- left_join(CATH_points_master,CATH_points_vrm)
 
 
 ### ?. Save and export master ####
 
-write.csv(CATH_points_master, "CATH_master_sites_Feb16.csv", row.names = F)
+write.csv(CATH_points_master, "CATH_master_sites_Mar09.csv", row.names = F)
 
